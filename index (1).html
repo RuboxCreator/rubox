@@ -607,4 +607,86 @@ function frame(){requestAnimationFrame(frame);const dt=Math.min(clk.getDelta(),.
  sun.position.set(p.x+28,45,p.z+18);sun.target.position.set(p.x,0,p.z);sun.target.updateMatrixWorld();R.render(sc,cam)}
 frame();
 talk('Welcome home! Your PC is on the desk in your room (look for the RUBOX sign). Family members with ❗ are waving at you. Go out the front door (south wall of the living room) to visit the shops across the street. Watch out for traffic!');
+</script><!-- RUBOX ACCOUNTS MODULE
+     Paste this whole block into your Rubox page, directly before the final </body>.
+     It needs no other edits: it reads the game's own S, U, W, SH, N, refresh() and talk().
+     When you publish the page, declare this capability so accounts sync across devices:
+       db: { rules: [ {path:"accounts", read:"view", write:"interact"}, {path:"emails", read:"view", write:"interact"} ] }
+     Without it (or if db is unavailable) accounts are kept in this browser only. -->
+<style>
+#au{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;padding:14px;background:rgba(19,15,36,.94);color:var(--ink,#f1edff)}
+#au .bx{width:min(400px,100%);max-height:94vh;overflow:auto;background:var(--card,#1e1836);border:2px solid var(--acc,#a78bfa);border-radius:18px;padding:20px}
+#au h2{margin:0 0 4px;font-size:26px;font-weight:900;letter-spacing:-1px;text-transform:none;color:var(--ink,#f1edff)}
+#au p{margin:4px 0 12px;font-size:13px;color:var(--mut,#a79fc9)}
+#au label{display:block;font-size:12px;font-weight:700;margin:10px 0 4px}
+#au input{width:100%;border:1px solid var(--line,#2f2752);background:var(--bg,#130f24);color:inherit;border-radius:10px;padding:11px;font:inherit}
+#au .go{width:100%;margin-top:14px;border:0;border-radius:12px;padding:13px;font-weight:800;font-size:16px;color:#fff;cursor:pointer;background:linear-gradient(90deg,var(--acc,#a78bfa),var(--acc2,#ff6fa3))}
+#au .go:disabled{opacity:.5;cursor:wait}
+#au .lk{display:block;margin:12px auto 0;background:none;border:0;color:var(--acc,#a78bfa);font-weight:700;cursor:pointer;font-size:13px}
+#au-e{color:#ff6b6b;font-size:13px;font-weight:700;min-height:18px;margin-top:8px}
+#au-mail{margin:8px 0;padding:10px;border:2px dashed var(--acc2,#ff6fa3);border-radius:12px;font-size:13px}
+#au-mail b{font-size:24px;letter-spacing:5px;display:block;margin-top:4px}
+#au-m{margin-top:14px;font-size:11px;text-align:center;color:var(--mut,#a79fc9)}
+</style>
+<div id="au"><div class="bx"></div></div>
+<script>
+(()=>{
+const Q=s=>document.querySelector(s),enc=new TextEncoder(),box=Q('#au .bx');
+const hex=b=>[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');
+const sha=async t=>hex(await crypto.subtle.digest('SHA-256',enc.encode(t)));
+const pbk=async(pw,salt)=>{const k=await crypto.subtle.importKey('raw',enc.encode(pw),'PBKDF2',false,['deriveBits']);return hex(await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:enc.encode(salt),iterations:150000},k,256))};
+const rnd=n=>hex(crypto.getRandomValues(new Uint8Array(n)));
+const mask=e=>{const[a,d]=e.split('@');return a[0]+'***@'+d};
+let DB=null,me=null,mode='login',pend=null,lastSig='',mail='';
+try{claude.use('db').then(d=>{DB=d;view(1)}).catch(()=>{})}catch(e){}
+// storage: shared db when available, otherwise this browser
+const LS={get:p=>{try{return JSON.parse(localStorage.getItem('rubox:'+p))}catch(e){return null}},set:(p,v)=>{try{localStorage.setItem('rubox:'+p,JSON.stringify(v))}catch(e){}}};
+async function dget(p){if(DB){try{const s=await DB.doc(p).get();if(s.exists)return s.data()}catch(e){}}return LS.get(p)}
+async function dset(p,v){if(DB){try{await DB.doc(p).set(v);return}catch(e){}}LS.set(p,v)}
+// game state <-> save
+const snap=()=>({S:{buzz:S.buzz,total:S.total,click:S.click,fam:S.fam||0,milestone:S.milestone},U:Object.fromEntries(U.map(u=>[u.id,u.n0])),W:{eur:W.eur,usd:W.usd},own:SH.flatMap(d=>(d.items||[]).filter(i=>i.own).map(i=>d.name+'|'+i.n)),done:N.filter(n=>n.done).map(n=>n.n)});
+function load(s){Object.assign(S,s.S);U.forEach(u=>u.n0=(s.U||{})[u.id]||0);W.eur=s.W.eur;W.usd=s.W.usd;
+ SH.forEach(d=>(d.items||[]).forEach(i=>{if((s.own||[]).includes(d.name+'|'+i.n)){i.own=1;if(d.type==='furn'){const f=S.fam;i.fn();S.fam=f}}}));
+ N.forEach(n=>{if(n.perk&&(s.done||[]).includes(n.n))n.done=1});refresh()}
+async function save(){if(!me)return;const s=snap(),sig=JSON.stringify(s);if(sig===lastSig)return;lastSig=sig;const a=await dget('accounts/'+me.k);if(a){a.save=s;a.t=Date.now();await dset('accounts/'+me.k,a)}}
+setInterval(save,8000);addEventListener('pagehide',save);document.addEventListener('visibilitychange',()=>{if(document.hidden)save()});
+// e-mail code
+function sendCode(email){const c=String(crypto.getRandomValues(new Uint32Array(1))[0]%1e6).padStart(6,'0');Object.assign(pend,{code:c,exp:Date.now()+6e5,tries:0,at:Date.now()});
+ // A hosted page cannot send real e-mail. Replace this line with a call to your mail service;
+ // until then the code is shown in this on-screen demo inbox.
+ mail='<div id="au-mail">📬 <b style="display:inline;font-size:13px;letter-spacing:0">Demo inbox</b><br>To: '+email.replace(/</g,'&lt;')+'<br>Subject: Your Rubox code<b>'+c+'</b></div>'}
+// UI
+const f=(id,l,t,ph,ac)=>'<label for="a_'+id+'">'+l+'</label><input id="a_'+id+'" type="'+(t||'text')+'" placeholder="'+(ph||'')+'" autocomplete="'+(ac||'off')+'">';
+const v=id=>Q('#a_'+id).value,err=t=>Q('#au-e').textContent=t||'',busy=b=>Q('#au .go').disabled=!!b;
+function view(keep){if(keep){const m=Q('#au-m');if(m)m.textContent=DB?'☁️ Accounts sync across devices.':'💾 Accounts and saves stay in this browser.';return}let h='<h2>Rubox</h2>';
+ if(mode==='login')h+='<p>Log in to continue your progress.</p>'+f('id','Username or e-mail','text','','username')+f('pw','Password','password','','current-password')+'<div id="au-e"></div><button class="go" data-a="login">Log in</button><button class="lk" data-m="signup">New here? Create an account</button>';
+ else if(mode==='signup')h+='<p>Create an account. We’ll e-mail you a verification code.</p>'+f('u','Username','text','3–20 letters, numbers, _','username')+f('em','E-mail','email','you@example.com','email')+f('pw','Password','password','at least 8 characters','new-password')+f('pw2','Repeat password','password','','new-password')+'<div id="au-e"></div><button class="go" data-a="signup">Send verification code</button><button class="lk" data-m="login">I already have an account</button>';
+ else h+='<p>Enter the 6-digit code we sent to '+(pend.t==='login'?pend.a.em:pend.em.replace(/</g,'&lt;'))+'. It expires in 10 minutes.</p>'+mail+f('c','Verification code','text','123456','one-time-code')+'<div id="au-e"></div><button class="go" data-a="verify">Verify</button><button class="lk" data-a="resend">Send a new code</button><button class="lk" data-m="login">Back</button>';
+ h+='<div id="au-m">'+(DB?'☁️ Accounts sync across devices.':'💾 Accounts and saves stay in this browser.')+'</div>';box.innerHTML=h;const i=box.querySelector('input');if(i)i.focus()}
+async function signup(){const u=v('u').trim(),k=u.toLowerCase(),em=v('em').trim().toLowerCase(),pw=v('pw');
+ if(!/^[a-z0-9_]{3,20}$/.test(k))return err('Username: 3–20 letters, numbers or _');
+ if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em))return err('Enter a valid e-mail address');
+ if(pw.length<8)return err('Password needs at least 8 characters');
+ if(pw!==v('pw2'))return err('Passwords don’t match');
+ busy(1);const uk=await sha(k),eh=await sha(em);
+ if(await dget('accounts/'+uk)){busy(0);return err('That username is taken')}
+ if(await dget('emails/'+eh)){busy(0);return err('That e-mail is already registered')}
+ const salt=rnd(16);pend={t:'signup',uk,eh,u,em,salt,pw:await pbk(pw,salt)};sendCode(em);mode='verify';view()}
+async function login(){const id=v('id').trim().toLowerCase(),pw=v('pw');if(!id||!pw)return err('Fill in both fields');busy(1);
+ let uk;if(id.includes('@')){const e=await dget('emails/'+await sha(id));uk=e&&e.k}else uk=await sha(id);
+ const a=uk&&await dget('accounts/'+uk);
+ if(!a||await pbk(pw,a.salt)!==a.pw){busy(0);return err('Wrong username/e-mail or password')}
+ pend={t:'login',uk,a};sendCode(a.em);mode='verify';view()}
+async function verify(){const c=v('c').trim();if(Date.now()>pend.exp)return err('Code expired. Send a new one.');if(pend.tries>=5)return err('Too many tries. Send a new code.');
+ if(c!==pend.code){pend.tries++;return err('That code is not right')}
+ busy(1);if(pend.t==='signup'){const acc={u:pend.u,salt:pend.salt,pw:pend.pw,eh:pend.eh,em:mask(pend.em),save:null,t:Date.now()};await dset('accounts/'+pend.uk,acc);await dset('emails/'+pend.eh,{k:pend.uk});enter(pend.uk,acc)}else enter(pend.uk,pend.a)}
+function enter(k,a){me={k,u:a.u};if(a.save)load(a.save);lastSig=JSON.stringify(snap());Q('#au').style.display='none';Q('#au-who').textContent='👤 '+a.u;Q('#au-who').style.display='';Q('#au-out').style.display='';talk((a.save?'Welcome back, ':'Welcome, ')+a.u+'! Your progress now saves automatically.')}
+box.addEventListener('click',async e=>{const t=e.target;if(t.dataset.m){mode=t.dataset.m;mail='';return view()}
+ const a=t.dataset.a;if(a==='signup')await signup();else if(a==='login')await login();else if(a==='verify')await verify();else if(a==='resend'){if(Date.now()-pend.at<3e4)return err('Please wait 30 seconds before asking again');sendCode(pend.t==='login'?pend.a.em:pend.em);view()}});
+// keep game hotkeys (WASD, E, space) out of the form
+['keydown','keyup'].forEach(n=>Q('#au').addEventListener(n,e=>{e.stopPropagation();if(n==='keydown'&&e.key==='Enter'){const g=box.querySelector('.go');if(g&&!g.disabled)g.click()}}));
+Q('#hud').insertAdjacentHTML('beforeend','<span id="au-who" style="display:none"></span><button id="au-out" style="display:none">Log out</button>');
+Q('#au-out').onclick=async()=>{await save();location.reload()};
+view();
+})();
 </script></body></html>
