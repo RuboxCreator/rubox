@@ -607,4 +607,80 @@ function frame(){requestAnimationFrame(frame);const dt=Math.min(clk.getDelta(),.
  sun.position.set(p.x+28,45,p.z+18);sun.target.position.set(p.x,0,p.z);sun.target.updateMatrixWorld();R.render(sc,cam)}
 frame();
 talk('Welcome home! Your PC is on the desk in your room (look for the RUBOX sign). Family members with ❗ are waving at you. Go out the front door (south wall of the living room) to visit the shops across the street. Watch out for traffic!');
+</script><style>
+#au{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;padding:14px;background:rgba(19,15,36,.94);color:var(--ink,#f1edff)}
+#au .bx{width:min(400px,100%);max-height:94vh;overflow:auto;background:var(--card,#1e1836);border:2px solid var(--acc,#a78bfa);border-radius:18px;padding:20px}
+#au h2{margin:0 0 4px;font-size:26px;font-weight:900;letter-spacing:-1px;text-transform:none;color:var(--ink,#f1edff)}
+#au p{margin:4px 0 12px;font-size:13px;color:var(--mut,#a79fc9)}
+#au label{display:block;font-size:12px;font-weight:700;margin:10px 0 4px}
+#au input{width:100%;border:1px solid var(--line,#2f2752);background:var(--bg,#130f24);color:inherit;border-radius:10px;padding:11px;font:inherit}
+#au .go{width:100%;margin-top:14px;border:0;border-radius:12px;padding:13px;font-weight:800;font-size:16px;color:#fff;cursor:pointer;background:linear-gradient(90deg,var(--acc,#a78bfa),var(--acc2,#ff6fa3))}
+#au .go:disabled{opacity:.5;cursor:wait}
+#au .lk{display:block;margin:12px auto 0;background:none;border:0;color:var(--acc,#a78bfa);font-weight:700;cursor:pointer;font-size:13px}
+#au-e{color:#ff6b6b;font-size:13px;font-weight:700;min-height:18px;margin-top:8px}
+#au-m{margin-top:14px;font-size:11px;text-align:center;color:var(--mut,#a79fc9)}
+</style>
+<div id="au"><div class="bx"></div></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+(()=>{
+const Q=s=>document.querySelector(s),box=Q('#au .bx');
+const SB_URL='https://jfyklshgxltoexjduahf.supabase.co',SB_KEY='sb_publishable_eHGIuMGuUo36UenD4TE9Sw_M1-nSIgN';
+let sb=null;try{sb=supabase.createClient(SB_URL,SB_KEY)}catch(e){}
+let me=null,mode='login',pend=null,lastSig='',lastSend=0;
+// game state <-> save
+const snap=()=>({S:{buzz:S.buzz,total:S.total,click:S.click,fam:S.fam||0,milestone:S.milestone},U:Object.fromEntries(U.map(u=>[u.id,u.n0])),W:{eur:W.eur,usd:W.usd},own:SH.flatMap(d=>(d.items||[]).filter(i=>i.own).map(i=>d.name+'|'+i.n)),done:N.filter(n=>n.done).map(n=>n.n)});
+function load(s){Object.assign(S,s.S);U.forEach(u=>u.n0=(s.U||{})[u.id]||0);W.eur=s.W.eur;W.usd=s.W.usd;
+ SH.forEach(d=>(d.items||[]).forEach(i=>{if((s.own||[]).includes(d.name+'|'+i.n)){i.own=1;if(d.type==='furn'){const f=S.fam;i.fn();S.fam=f}}}));
+ N.forEach(n=>{if(n.perk&&(s.done||[]).includes(n.n))n.done=1});refresh()}
+async function save(){if(!me||!sb)return;const s=snap(),sig=JSON.stringify(s);if(sig===lastSig)return;lastSig=sig;
+ try{const{error}=await sb.from('profiles').update({save:s,updated_at:new Date().toISOString()}).eq('id',me.id);if(error)lastSig=''}catch(e){lastSig=''}}
+setInterval(save,8000);addEventListener('pagehide',save);document.addEventListener('visibilitychange',()=>{if(document.hidden)save()});
+// UI
+const f=(id,l,t,ph,ac)=>'<label for="a_'+id+'">'+l+'</label><input id="a_'+id+'" type="'+(t||'text')+'" placeholder="'+(ph||'')+'" autocomplete="'+(ac||'off')+'">';
+const v=id=>Q('#a_'+id).value,err=t=>{const e=Q('#au-e');if(e)e.textContent=t||''},busy=b=>{const g=Q('#au .go');if(g)g.disabled=!!b};
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function view(){let h='<h2>Rubox</h2>';
+ if(!sb)h+='<p>Could not load the account service. Check your internet connection and reload the page.</p>';
+ else if(mode==='login')h+='<p>Log in to continue your progress.</p>'+f('id','E-mail','email','you@example.com','email')+f('pw','Password','password','','current-password')+'<div id="au-e"></div><button class="go" data-a="login">Log in</button><button class="lk" data-m="signup">New here? Create an account</button>';
+ else if(mode==='signup')h+='<p>Create an account. We’ll e-mail you a verification code.</p>'+f('u','Username','text','3–20 letters, numbers, _','username')+f('em','E-mail','email','you@example.com','email')+f('pw','Password','password','at least 8 characters','new-password')+f('pw2','Repeat password','password','','new-password')+'<div id="au-e"></div><button class="go" data-a="signup">Send verification code</button><button class="lk" data-m="login">I already have an account</button>';
+ else h+='<p>Enter the code we sent to <b>'+esc(pend.em)+'</b>. Check your spam folder if it doesn’t arrive.</p>'+f('c','Verification code','text','','one-time-code')+'<div id="au-e"></div><button class="go" data-a="verify">Verify</button><button class="lk" data-a="resend">Send a new code</button><button class="lk" data-m="login">Back</button>';
+ h+='<div id="au-m">☁️ Your progress is saved to your account.</div>';box.innerHTML=h;const i=box.querySelector('input');if(i)i.focus()}
+async function signup(){const u=v('u').trim().toLowerCase(),em=v('em').trim().toLowerCase(),pw=v('pw');
+ if(!/^[a-z0-9_]{3,20}$/.test(u))return err('Username: 3–20 letters, numbers or _');
+ if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em))return err('Enter a valid e-mail address');
+ if(pw.length<8)return err('Password needs at least 8 characters');
+ if(pw!==v('pw2'))return err('Passwords don’t match');
+ busy(1);const t=await sb.rpc('username_taken',{name:u});
+ if(t.error){busy(0);return err(t.error.message)}
+ if(t.data){busy(0);return err('That username is taken')}
+ const{data,error}=await sb.auth.signUp({email:em,password:pw,options:{data:{username:u}}});busy(0);
+ if(error)return err(/database/i.test(error.message)?'That username can’t be used':error.message);
+ if(data.user&&data.user.identities&&!data.user.identities.length)return err('That e-mail is already registered. Try logging in.');
+ lastSend=Date.now();pend={em};mode='verify';view()}
+async function login(){const em=v('id').trim().toLowerCase(),pw=v('pw');if(!em||!pw)return err('Fill in both fields');busy(1);
+ const{data,error}=await sb.auth.signInWithPassword({email:em,password:pw});
+ if(error){busy(0);if(/confirm/i.test(error.message)){pend={em};mode='verify';view();return err('Confirm your e-mail first: enter the code, or send a new one.')}return err('Wrong e-mail or password')}
+ await enter(data.user)}
+async function verify(){const c=v('c').trim();if(!c)return err('Enter the code');busy(1);
+ const{data,error}=await sb.auth.verifyOtp({email:pend.em,token:c,type:'signup'});
+ if(error){busy(0);return err('That code is not right or has expired')}
+ await enter(data.user)}
+async function resend(){if(Date.now()-lastSend<3e4)return err('Please wait 30 seconds before asking again');lastSend=Date.now();
+ const{error}=await sb.auth.resend({type:'signup',email:pend.em});err(error?error.message:'A new code is on its way.')}
+async function enter(user){if(me)return;
+ let r=null;try{r=(await sb.from('profiles').select('username,save').eq('id',user.id).single()).data}catch(e){}
+ me={id:user.id,u:(r&&r.username)||user.email};if(r&&r.save)load(r.save);lastSig=JSON.stringify(snap());
+ Q('#au').style.display='none';Q('#au-who').textContent='👤 '+me.u;Q('#au-who').style.display='';Q('#au-out').style.display='';
+ talk((r&&r.save?'Welcome back, ':'Welcome, ')+me.u+'! Your progress now saves automatically.')}
+box.addEventListener('click',async e=>{const t=e.target;if(t.dataset.m){mode=t.dataset.m;return view()}
+ const a=t.dataset.a;if(a==='signup')await signup();else if(a==='login')await login();else if(a==='verify')await verify();else if(a==='resend')await resend()});
+// keep game hotkeys (WASD, E, space) out of the form
+['keydown','keyup'].forEach(n=>Q('#au').addEventListener(n,e=>{e.stopPropagation();if(n==='keydown'&&e.key==='Enter'){const g=box.querySelector('.go');if(g&&!g.disabled)g.click()}}));
+Q('#hud').insertAdjacentHTML('beforeend','<span id="au-who" style="display:none"></span><button id="au-out" style="display:none">Log out</button>');
+Q('#au-out').onclick=async()=>{await save();try{await sb.auth.signOut()}catch(e){}location.reload()};
+view();
+if(sb)sb.auth.getSession().then(({data})=>{if(data&&data.session)enter(data.session.user)}).catch(()=>{});
+})();
 </script>
+</body></html>
